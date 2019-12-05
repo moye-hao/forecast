@@ -1,0 +1,72 @@
+# -*- coding: utf-8 -*-
+import pandas as pd 
+import numpy as np 
+import matplotlib.pyplot as plt 
+from statsmodels.tsa.arima_model import ARMA
+import warnings
+from itertools import product
+from datetime import datetime
+plt.rcParams['font.family'] = ['Arial Unicode MS'] #正常显示中文
+warnings.filterwarnings('ignore')
+#数据加载
+df = pd.read_csv('./BrentOilPrices.csv')
+#把时间作为行索引
+print(df.head(30))
+df.Date = pd.to_datetime(df.Date)
+df.index = df.Date
+#共8216条数据，从1987.05.20-2019.09.30
+#按月统计
+df_month = df.resample('M').mean()
+#按天、按月显示石油价格走势
+fig = plt.figure(figsize=(20,8),dpi=80)
+plt.suptitle('布伦特石油价格（美金）', fontsize=20)
+plt.subplot(211)
+plt.plot(df.Price, '-', label='按天')
+plt.legend()
+plt.subplot(212)
+plt.plot(df_month.Price, '-', label='按月')
+plt.legend()
+#设置参数范围
+ps = range(4)
+qs = range(4)
+parameters = product(ps,qs)
+parameters_list = list(parameters)
+# 寻找最优ARMA模型参数，即best_aic最小
+results = []
+best_aic = float("inf") # 正无穷
+for param in parameters_list:
+	try:
+		model = ARMA(df_month.Price,order=(param[0],param[1])).fit()
+	except ValueError:
+		print('参数错误', param)
+		continue
+	aic = model.aic
+	if aic < best_aic:
+		best_model = model
+		best_aic = aic
+		best_param = param
+
+	results.append([param, model.aic])
+#输出最优模型
+result_table = pd.DataFrame(results)
+result_table.columns = ['parameters', 'aic']
+print('最优模型: ', best_model.summary())
+#布伦特原油价格预测
+df_month2 = df_month[['Price']]
+date_list = pd.date_range(start='2019-10-31',periods=8,freq='M')
+future = pd.DataFrame(index=date_list, columns=df_month2.columns)
+print(future.head())
+print(future.describe())
+df_month2 = pd.concat([df_month2,future])
+df_month2['forecast'] = best_model.predict(start=0,end=401)
+print(df_month2.head())
+print(df_month2.describe())
+#图形显示
+plt.figure(figsize=(20,8))
+df_month2.Price.plot(color= 'g',label='实际金额')
+df_month2.forecast.plot(color='r', ls='--', label='预测金额')
+plt.legend()
+plt.title('布伦特原油价格（月）')
+plt.xlabel('时间')
+plt.ylabel('布伦特原油价格')
+plt.show()
